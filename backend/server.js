@@ -1,27 +1,10 @@
 const express = require("express");
 const cors = require("cors");
-const { Pool } = require("pg");
 const http = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config();
 
-// Parse DATABASE_URL if provided (for Render/Heroku deployment)
-let dbConfig;
-if (process.env.DATABASE_URL) {
-  // For production deployment with DATABASE_URL
-  const { parse } = require("pg-connection-string");
-  dbConfig = parse(process.env.DATABASE_URL);
-  dbConfig.ssl = { rejectUnauthorized: false };
-} else {
-  // For local development
-  dbConfig = {
-    user: process.env.DB_USER || "postgres",
-    host: process.env.DB_HOST || "localhost",
-    database: process.env.DB_NAME || "ashokr",
-    password: process.env.DB_PASSWORD || "",
-    port: process.env.DB_PORT || 5433,
-  };
-}
+const { runMigrations, pool } = require("./migrate");
 
 const app = express();
 app.use(cors());
@@ -32,18 +15,15 @@ const io = new Server(server, {
   cors: { origin: "*" },
 });
 
-// Database connection
-const pool = new Pool(dbConfig);
-
-// Test database connection
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error("Error connecting to database:", err.stack);
-  } else {
-    console.log("Database connected successfully");
-    release();
-  }
-});
+// Run migrations on startup
+runMigrations()
+  .then(() => {
+    console.log("✅ Database ready");
+  })
+  .catch((err) => {
+    console.error("❌ Migration failed:", err);
+    process.exit(1);
+  });
 
 // Get parking status
 app.get("/parking/status", async (req, res) => {
